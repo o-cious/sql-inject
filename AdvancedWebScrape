@@ -1,0 +1,72 @@
+import requests
+from bs4 import BeautifulSoup
+import threading
+from queue import Queue
+import time
+
+# Function to fetch and parse a URL
+def fetch_url(url, results):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.title.string if soup.title else 'No Title'
+        word_count = len(soup.get_text().split())
+        results[url] = {'title': title, 'word_count': word_count}
+    except requests.RequestException as e:
+        results[url] = {'error': str(e)}
+
+# Worker thread function
+def worker(queue, results):
+    while not queue.empty():
+        url = queue.get()
+        fetch_url(url, results)
+        queue.task_done()
+
+# Main function to manage threads and queue
+def scrape_websites(urls, num_threads=5):
+    queue = Queue()
+    results = {}
+
+    # Populate the queue
+    for url in urls:
+        queue.put(url)
+
+    # Create and start threads
+    threads = []
+    for _ in range(num_threads):
+        thread = threading.Thread(target=worker, args=(queue, results))
+        thread.start()
+        threads.append(thread)
+
+    # Wait for all threads to finish
+    queue.join()
+    for thread in threads:
+        thread.join()
+
+    return results
+
+if __name__ == "__main__":
+    # Example list of URLs to scrape
+    urls = [
+        'https://www.python.org',
+        'https://www.wikipedia.org',
+        'https://www.github.com',
+        'https://www.stackoverflow.com',
+        'https://www.reddit.com'
+    ]
+
+    print("Starting web scraping...")
+    start_time = time.time()
+
+    # Perform the web scraping
+    results = scrape_websites(urls, num_threads=3)
+
+    # Display results
+    for url, data in results.items():
+        if 'error' in data:
+            print(f"Error scraping {url}: {data['error']}")
+        else:
+            print(f"URL: {url}\nTitle: {data['title']}\nWord Count: {data['word_count']}\n")
+
+    print(f"Scraping completed in {time.time() - start_time:.2f} seconds.")
